@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+    volumes:
+      - chroma_data:/chroma/chroma
+    networks:
+      - rag-network
+
+  rag-system-app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - CHROMA_URL=http://chromadb:8000
+      - NODE_ENV=production
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src
+    depends_on:
+      - chromadb
+    networks:
+      - rag-network
+
+volumes:
+  chroma_data:
+
+networks:
+  rag-network:
+    driver: bridge

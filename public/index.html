@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Museum RAG System</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .question-form {
+            margin-bottom: 30px;
+        }
+        .question-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .ask-button {
+            background: #3498db;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .ask-button:hover {
+            background: #2980b9;
+        }
+        .ask-button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            color: #7f8c8d;
+            margin: 20px 0;
+        }
+        .answer-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #ecf0f1;
+            border-radius: 5px;
+        }
+        .answer {
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        .sources {
+            margin-top: 20px;
+        }
+        .source {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .source-header {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        .source-text {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        .processing-time {
+            text-align: right;
+            color: #95a5a6;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .examples {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e8f6f3;
+            border-radius: 5px;
+        }
+        .example-question {
+            background: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+            cursor: pointer;
+            border: 1px solid #ddd;
+        }
+        .example-question:hover {
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏛️ Museum RAG System</h1>
+        
+        <div class="question-form">
+            <input type="text" id="questionInput" class="question-input" 
+                   placeholder="Ask a question about the museum collection..." />
+            <button id="askButton" class="ask-button">Ask Question</button>
+        </div>
+        
+        <div class="examples">
+            <h3>Example Questions:</h3>
+            <div class="example-question" onclick="setQuestion('Show me American paintings from the 19th century')">
+                Show me American paintings from the 19th century
+            </div>
+            <div class="example-question" onclick="setQuestion('Find artworks with floral motifs or nature themes')">
+                Find artworks with floral motifs or nature themes
+            </div>
+            <div class="example-question" onclick="setQuestion('What can you tell me about Japanese ceramics in the collection?')">
+                What can you tell me about Japanese ceramics in the collection?
+            </div>
+            <div class="example-question" onclick="setQuestion('Find portraits by female artists')">
+                Find portraits by female artists
+            </div>
+            <div class="example-question" onclick="setQuestion('Show me artworks related to religious themes')">
+                Show me artworks related to religious themes
+            </div>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">
+            🔍 Searching and generating answer...
+        </div>
+        
+        <div id="answerSection" class="answer-section" style="display: none;">
+            <div id="answer" class="answer"></div>
+            <div id="sources" class="sources"></div>
+            <div id="processingTime" class="processing-time"></div>
+        </div>
+    </div>
+
+    <script>
+        const questionInput = document.getElementById('questionInput');
+        const askButton = document.getElementById('askButton');
+        const loading = document.getElementById('loading');
+        const answerSection = document.getElementById('answerSection');
+        const answerDiv = document.getElementById('answer');
+        const sourcesDiv = document.getElementById('sources');
+        const processingTimeDiv = document.getElementById('processingTime');
+
+        function setQuestion(question) {
+            questionInput.value = question;
+        }
+
+        async function askQuestion() {
+            const question = questionInput.value.trim();
+            if (!question) {
+                alert('Please enter a question');
+                return;
+            }
+
+            // Show loading state
+            askButton.disabled = true;
+            askButton.textContent = 'Processing...';
+            loading.style.display = 'block';
+            answerSection.style.display = 'none';
+
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question }),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Failed to get answer');
+                }
+
+                // Display answer
+                answerDiv.textContent = data.answer;
+                
+                // Display sources
+                sourcesDiv.innerHTML = '<h3>📚 Sources:</h3>';
+                data.sources.forEach((source, index) => {
+                    const sourceDiv = document.createElement('div');
+                    sourceDiv.className = 'source';
+                    sourceDiv.innerHTML = `
+                        <div class="source-header">
+                            ${source.source} (Score: ${source.score.toFixed(3)})
+                        </div>
+                        <div class="source-text">
+                            File: ${source.file}<br>
+                            ${source.text.substring(0, 300)}...
+                        </div>
+                    `;
+                    sourcesDiv.appendChild(sourceDiv);
+                });
+
+                processingTimeDiv.textContent = `Processing time: ${data.processing_time}ms`;
+                answerSection.style.display = 'block';
+
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                // Reset button state
+                askButton.disabled = false;
+                askButton.textContent = 'Ask Question';
+                loading.style.display = 'none';
+            }
+        }
+
+        // Event listeners
+        askButton.addEventListener('click', askQuestion);
+        questionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                askQuestion();
+            }
+        });
+    </script>
+</body>
+</html>

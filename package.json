@@ -1,0 +1,26 @@
+{
+  "name": "rag-system",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node start.js",
+    "stop": "pkill -f 'node src/api/server.js'",
+    "cli": "node src/cli/cli.js",
+    "process-data": "node src/data/processDataNode.js",
+    "create-samples": "node src/data/createSampleData.js",
+    "count-files": "node src/utils/countFiles.js"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.1.0",
+    "@langchain/community": "^0.3.46",
+    "@langchain/core": "^0.3.59",
+    "chromadb": "^1.9.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "langchain": "^0.3.28",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.17.0"
+  }
+}
