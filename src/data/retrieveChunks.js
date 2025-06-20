@@ -1,7 +1,6 @@
 import { pipeline } from "@huggingface/transformers";
 import { ChromaClient } from "chromadb";
 import { CHROMA_URL } from "../config.js";
-import { searchMockData } from "./mockData.js";
 
 /**
  * Retrieve top-k relevant chunks from ChromaDB for a given question.
@@ -31,12 +30,7 @@ export async function retrieveRelevantChunks(question, topK = 5) {
     };
 
     // 3. Query ChromaDB
-    const url = new URL(CHROMA_URL);
-    const chroma = new ChromaClient({
-      host: url.hostname,
-      port: Number(url.port),
-      ssl: url.protocol === "https:",
-    });
+    const chroma = new ChromaClient({ path: CHROMA_URL });
 
     const collection = await chroma.getOrCreateCollection({
       name: "museum_chunks",
@@ -60,7 +54,6 @@ export async function retrieveRelevantChunks(question, topK = 5) {
     }));
   } catch (error) {
     console.warn("ChromaDB error, falling back to mock data:", error.message);
-    // Fallback to mock data for demo purposes
-    return searchMockData(question, topK);
+    return [];
   }
 }
