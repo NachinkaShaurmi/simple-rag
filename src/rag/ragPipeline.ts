@@ -1,16 +1,10 @@
 import { pipeline } from "@huggingface/transformers";
 import { retrieveRelevantChunks } from "../data/retrieveChunks.js";
+import type { RAGResult } from "../types/index.js";
 
-/**
- * Generate an answer to a question using retrieved context and LLM.
- * @param {string} question
- * @returns {Promise<{answer: string, sources: Array}>}
- */
-export async function answerWithRAG(question) {
-  // 1. Retrieve relevant chunks
+export async function answerWithRAG(question: string): Promise<RAGResult> {
   const topChunks = await retrieveRelevantChunks(question, 5);
 
-  // 2. Compose context for the LLM
   const context = topChunks
     .map((c, i) => `Source ${i + 1}: ${c.document}`)
     .join("\n\n");
@@ -24,7 +18,6 @@ Question: ${question}
 Answer:
 `.trim();
 
-  // 3. Generate answer with LLM
   try {
     const generator = await pipeline("text-generation", "Xenova/distilgpt2");
     const output = await generator(prompt, {
@@ -34,13 +27,12 @@ Answer:
       pad_token_id: 50256,
     });
 
-    let answer = output[0]?.generated_text || "";
+    let answer = (output as any)[0]?.generated_text || "";
     if (answer.includes(prompt)) {
       answer = answer.replace(prompt, "").trim();
     }
 
     if (!answer || answer.length < 10) {
-      // Fallback to simple template-based answer
       const relevantSources = topChunks.slice(0, 2);
       answer = `Based on the museum collection, I found ${
         relevantSources.length
@@ -60,10 +52,7 @@ Answer:
       })),
     };
   } catch (error) {
-    console.warn(
-      "LLM generation failed, using template response:",
-      error.message
-    );
+    console.warn("LLM generation failed, using template response:", (error as Error).message);
     const relevantSources = topChunks.slice(0, 2);
     const answer = `Based on the museum collection, I found ${
       relevantSources.length

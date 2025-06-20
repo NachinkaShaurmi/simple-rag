@@ -3,41 +3,37 @@ import path from "path";
 import { pipeline } from "@huggingface/transformers";
 import { ChromaClient } from "chromadb";
 import { DATA_DIR, CHROMA_URL } from "../config.js";
+import type {
+  ArtworkData,
+  TextChunk,
+  EmbeddingFunction,
+} from "../types/index.js";
 
-/**
- * Process JSON files and create text chunks for RAG
- */
-async function processMuseumData() {
+async function processMuseumData(): Promise<void> {
   console.log("Starting data processing...");
 
-  // Initialize embedding model
   const embedder = await pipeline(
     "feature-extraction",
     "Xenova/all-MiniLM-L6-v2"
   );
 
-  // Create custom embedding function
-  const customEmbeddingFunction = {
-    async generate(texts) {
-      const embeddings = [];
+  const customEmbeddingFunction: EmbeddingFunction = {
+    async generate(texts: string[]): Promise<number[][]> {
+      const embeddings: number[][] = [];
       for (const text of texts) {
         const result = await embedder(text);
-        embeddings.push(result[0][0]);
+        embeddings.push(result[0][0] as number[]);
       }
       return embeddings;
     },
   };
 
-  // Initialize ChromaDB client
   const chroma = new ChromaClient({ path: CHROMA_URL });
-
-  // Create or get collection
   const collection = await chroma.getOrCreateCollection({
     name: "museum_chunks",
     embeddingFunction: customEmbeddingFunction,
   });
 
-  // Process JSON files
   const objectsDir = path.join(DATA_DIR, "objects", "0");
   const files = fs
     .readdirSync(objectsDir)
@@ -45,18 +41,16 @@ async function processMuseumData() {
 
   console.log(`Found ${files.length} JSON files to process`);
 
-  const documents = [];
-  const metadatas = [];
-  const ids = [];
+  const documents: string[] = [];
+  const metadatas: any[] = [];
+  const ids: string[] = [];
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const filePath = path.join(objectsDir, file);
 
     try {
-      const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
-
-      // Create text chunks from artwork data
+      const data: ArtworkData = JSON.parse(fs.readFileSync(filePath, "utf8"));
       const chunks = createTextChunks(data, file);
 
       chunks.forEach((chunk, chunkIndex) => {
@@ -77,11 +71,10 @@ async function processMuseumData() {
         console.log(`Processed ${i + 1}/${files.length} files`);
       }
     } catch (error) {
-      console.error(`Error processing file ${file}:`, error.message);
+      console.error(`Error processing file ${file}:`, (error as Error).message);
     }
   }
 
-  // Add documents to ChromaDB in batches
   const batchSize = 100;
   for (let i = 0; i < documents.length; i += batchSize) {
     const batch = {
@@ -103,13 +96,12 @@ async function processMuseumData() {
   );
 }
 
-/**
- * Create text chunks from artwork JSON data
- */
-function createTextChunks(artworkData, filename) {
-  const chunks = [];
+function createTextChunks(
+  artworkData: ArtworkData,
+  filename: string
+): TextChunk[] {
+  const chunks: TextChunk[] = [];
 
-  // Main description chunk
   const mainText = [
     artworkData.title ? `Title: ${artworkData.title}` : "",
     artworkData.artist ? `Artist: ${artworkData.artist}` : "",
@@ -134,7 +126,6 @@ function createTextChunks(artworkData, filename) {
     });
   }
 
-  // Additional text fields as separate chunks
   if (artworkData.text && artworkData.text.length > 100) {
     chunks.push({
       text: `${artworkData.title || "Artwork"} - Additional Information: ${
@@ -144,8 +135,7 @@ function createTextChunks(artworkData, filename) {
     });
   }
 
-  // Tags and keywords chunk
-  const tags = [];
+  const tags: string[] = [];
   if (artworkData.style) tags.push(`Style: ${artworkData.style}`);
   if (artworkData.classification)
     tags.push(`Classification: ${artworkData.classification}`);
@@ -173,7 +163,6 @@ function createTextChunks(artworkData, filename) {
       ];
 }
 
-// Run if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   processMuseumData().catch(console.error);
 }

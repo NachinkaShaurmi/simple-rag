@@ -9,8 +9,8 @@ const rl = readline.createInterface({
 console.log('🏛️  Museum RAG System CLI');
 console.log('Ask questions about the museum collection. Type "exit" to quit.\n');
 
-const askQuestion = () => {
-  rl.question('❓ Your question: ', async (question) => {
+const askQuestion = (): void => {
+  rl.question('❓ Your question: ', async (question: string) => {
     if (question.toLowerCase() === 'exit') {
       console.log('Goodbye! 👋');
       rl.close();
@@ -44,7 +44,7 @@ const askQuestion = () => {
       console.log('─'.repeat(80));
       
     } catch (error) {
-      console.error('❌ Error:', error.message);
+      console.error('❌ Error:', (error as Error).message);
       console.log('');
     }
     
@@ -52,5 +52,4 @@ const askQuestion = () => {
   });
 };
 
-// Start the CLI
 askQuestion();

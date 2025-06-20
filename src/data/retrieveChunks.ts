@@ -1,37 +1,31 @@
 import { pipeline } from "@huggingface/transformers";
 import { ChromaClient } from "chromadb";
 import { CHROMA_URL } from "../config.js";
+import type { RetrievedChunk, EmbeddingFunction } from "../types/index.js";
 
-/**
- * Retrieve top-k relevant chunks from ChromaDB for a given question.
- * @param {string} question
- * @param {number} topK
- * @returns {Promise<Array<{document: string, metadata: object, score: number}>>}
- */
-export async function retrieveRelevantChunks(question, topK = 5) {
+export async function retrieveRelevantChunks(
+  question: string,
+  topK: number = 5
+): Promise<RetrievedChunk[]> {
   try {
-    // 1. Embed the question
     const embedder = await pipeline(
       "feature-extraction",
       "Xenova/all-MiniLM-L6-v2"
     );
-    const embedding = (await embedder(question))[0][0];
+    const embedding = (await embedder(question))[0][0] as number[];
 
-    // 2. Create a custom embedding function
-    const customEmbeddingFunction = {
-      async generate(texts) {
-        const embeddings = [];
+    const customEmbeddingFunction: EmbeddingFunction = {
+      async generate(texts: string[]): Promise<number[][]> {
+        const embeddings: number[][] = [];
         for (const text of texts) {
           const result = await embedder(text);
-          embeddings.push(result[0][0]);
+          embeddings.push(result[0][0] as number[]);
         }
         return embeddings;
       },
     };
 
-    // 3. Query ChromaDB
     const chroma = new ChromaClient({ path: CHROMA_URL });
-
     const collection = await chroma.getOrCreateCollection({
       name: "museum_chunks",
       embeddingFunction: customEmbeddingFunction,
@@ -43,17 +37,20 @@ export async function retrieveRelevantChunks(question, topK = 5) {
       include: ["documents", "metadatas", "distances"],
     });
 
-    // 4. Format results
     const docs = results.documents?.[0] || [];
     const metas = results.metadatas?.[0] || [];
     const scores = results.distances?.[0] || [];
-    return docs.map((document, i) => ({
+
+    return docs.map((document: string, i: number) => ({
       document,
-      metadata: metas[i],
+      metadata: metas[i] as any,
       score: scores[i],
     }));
   } catch (error) {
-    console.warn("ChromaDB error, falling back to mock data:", error.message);
+    console.warn(
+      "ChromaDB error, falling back to mock data:",
+      (error as Error).message
+    );
     return [];
   }
 }
