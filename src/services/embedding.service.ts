@@ -3,13 +3,14 @@ import * as lancedb from "@lancedb/lancedb";
 import { config } from "../config";
 import { DocumentChunk } from "../interfaces";
 import { logger } from "../utils/logger";
+import { Table } from "@lancedb/lancedb";
 
 export class EmbeddingService {
   private static instance: EmbeddingService;
   private embedder: any;
   private db: any;
-  private table: any;
-  private instanceId: string = Math.random().toString(36).substring(2);
+  private table: Table | null = null;
+  private instanceId: string = crypto.randomUUID();
 
   private constructor() {}
 
@@ -55,10 +56,24 @@ export class EmbeddingService {
           `Table "documents" already exists, opening it for instance ${this.instanceId}`
         );
         this.table = await this.db.openTable("documents");
+
+        // Remove the temp record if it exists
+        try {
+          // Check if there are any records first (optional)
+          const allRecords = await this.table?.countRows();
+          logger.info(`Table has ${allRecords} total records`);
+
+          // Delete temp records directly
+          await this.table?.delete("id = 'temp'");
+          logger.info("Removed any existing temp records from table");
+        } catch (error) {
+          logger.warn(`Could not remove temp record: ${error}`);
+        }
       } else {
         logger.info(
           `Creating new "documents" table for instance ${this.instanceId}`
         );
+        // Create table with temp record
         this.table = await this.db.createTable("documents", [
           {
             id: "temp",
@@ -68,6 +83,10 @@ export class EmbeddingService {
             chunkIndex: 0,
           },
         ]);
+
+        // Immediately remove the temp record after table creation
+        logger.info("Removing temp record after table creation");
+        await this.table?.delete("id = 'temp'");
       }
     } catch (error) {
       logger.error(
@@ -115,18 +134,10 @@ export class EmbeddingService {
         };
         embeddedChunks.push(embeddedChunk);
 
-        const existing = await this.table
-          .search(vector)
-          .where(`id = '${chunk.id}'`)
-          .execute();
-        const existingArray = Array.isArray(existing)
-          ? existing
-          : existing.toArray
-          ? await existing.toArray()
-          : [];
+        const existingArray = await this.table?.vectorSearch(vector).toArray();
 
-        if (existingArray.length === 0) {
-          await this.table.add([
+        if (existingArray?.length === 0) {
+          await this.table?.add([
             {
               id: chunk.id,
               vector,
@@ -162,27 +173,21 @@ export class EmbeddingService {
         normalize: true,
       });
 
-      const results = await this.table
-        .search(Array.from(queryEmbedding.data))
+      const resultsArray = await this.table
+        ?.vectorSearch(Array.from(queryEmbedding.data))
         .limit(k)
-        .execute();
+        .toArray();
 
-      logger.info(`Raw search results: ${JSON.stringify(results)}`);
+      logger.info(`Raw search results: ${JSON.stringify(resultsArray)}`);
 
       logger.info(
         `Search results type for instance ${
           this.instanceId
-        }: ${typeof results}, isArray: ${Array.isArray(results)}`
+        }: ${typeof resultsArray}, isArray: ${Array.isArray(resultsArray)}`
       );
-      if (results && typeof results === "object") {
-        logger.info(`Search results keys: ${Object.keys(results)}`);
+      if (resultsArray && typeof resultsArray === "object") {
+        logger.info(`Search results keys: ${Object.keys(resultsArray)}`);
       }
-
-      const resultsArray = Array.isArray(results)
-        ? results
-        : results.toArray
-        ? await results.toArray()
-        : [];
 
       if (!Array.isArray(resultsArray)) {
         logger.error(
@@ -205,6 +210,24 @@ export class EmbeddingService {
     } catch (error) {
       logger.error(`Search error for instance ${this.instanceId}: ${error}`);
       throw error;
+    }
+  };
+
+  cleanup = async () => {
+    try {
+      if (this.db) {
+        logger.info(
+          `Closing database connection for instance ${this.instanceId}`
+        );
+        this.db.close();
+        this.db = null;
+        this.table = null;
+      }
+      logger.info(
+        `EmbeddingService cleanup completed for instance ${this.instanceId}`
+      );
+    } catch (error) {
+      logger.error(`Error during EmbeddingService cleanup: ${error}`);
     }
   };
 }

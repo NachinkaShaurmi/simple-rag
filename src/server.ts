@@ -55,6 +55,8 @@ async function startServer() {
     // Graceful shutdown
     const shutdown = async () => {
       logger.info("Shutting down server...");
+      const ragService = RagService.getInstance();
+      await ragService.cleanup();
       server.close(() => {
         logger.info("Server closed");
         process.exit(0);
