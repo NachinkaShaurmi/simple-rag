@@ -1,7 +1,12 @@
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 
 dotenv.config();
 
-export const CHROMA_URL: string = process.env.CHROMA_URL || "http://chromadb:8000";
-export const DATA_DIR: string = process.env.DATA_DIR || "./data";
-export const PORT: number = parseInt(process.env.PORT || "3000", 10);
+export const config = {
+  port: process.env.PORT || 3000,
+  documentPath: process.env.DOCUMENT_PATH || "./data",
+  lanceDbPath: process.env.LANCE_DB_PATH || "./lancedb",
+  embeddingModel:
+    process.env.EMBEDDING_MODEL || "sentence-transformers/all-MiniLM-L6-v2",
+  llmModel: process.env.LLM_MODEL || "HuggingFaceTB/SmolLM2-135M-Instruct",
+};

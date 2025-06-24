@@ -1,28 +1,23 @@
 {
-  "name": "rag-system",
+  "name": "rag-pipeline",
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && node dist/start.js",
-    "dev": "tsc && node dist/start.js",
-    "stop": "pkill -f 'node dist/api/server.js'",
-    "cli": "npm run build && node dist/cli/cli.js",
-    "process-data": "npm run build && node dist/data/processDataNode.js",
-    "count-files": "npm run build && node dist/utils/countFiles.js"
+    "start": "RUST_LOG=info tsc && node dist/server.js",
+    "build": "tsc"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.5.2",
+    "@lancedb/lancedb": "^0.12.0",
     "@langchain/community": "^0.3.47",
     "@langchain/core": "^0.3.60",
-    "chromadb": "^3.0.4",
-    "chromadb-default-embed": "^2.14.0",
+    "apache-arrow": "^17.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.1.0",
     "langchain": "^0.3.28",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
+    "tslib": "^2.8.1",
     "winston": "^3.17.0"
   },
   "devDependencies": {
