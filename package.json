@@ -1,26 +1,32 @@
 {
-  "name": "rag-system",
+  "name": "rag-pipeline",
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
-    "start": "node start.js",
-    "stop": "pkill -f 'node src/api/server.js'",
-    "cli": "node src/cli/cli.js",
-    "process-data": "node src/data/processDataNode.js",
-    "create-samples": "node src/data/createSampleData.js",
-    "count-files": "node src/utils/countFiles.js"
+    "start": "RUST_LOG=info tsc && node dist/server.js",
+    "build": "tsc"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.1.0",
-    "@langchain/community": "^0.3.46",
-    "@langchain/core": "^0.3.59",
-    "chromadb": "^1.9.2",
+    "@huggingface/transformers": "^3.5.2",
+    "@lancedb/lancedb": "^0.21.0",
+    "@langchain/community": "^0.3.47",
+    "@langchain/core": "^0.3.60",
+    "apache-arrow": "^17.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "express": "^4.21.2",
+    "express": "^5.1.0",
     "langchain": "^0.3.28",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
+    "tslib": "^2.8.1",
     "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/dotenv": "^6.1.1",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.0",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.6",
+    "typescript": "^5.3.0"
   }
 }
