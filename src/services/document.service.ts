@@ -110,7 +110,7 @@ export class DocumentService {
       logger.error(`Error processing documents: ${error}`);
     }
 
-    console.log(888, chunks);
+    console.log("list of chunks", chunks);
 
     return chunks;
   }
