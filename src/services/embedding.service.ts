@@ -27,84 +27,39 @@ export class EmbeddingService {
       this.embedder = await pipeline(
         "feature-extraction",
         config.embeddingModel,
-        {
-          dtype: "fp32",
-        }
+        { dtype: "fp32" }
       );
-
-      logger.info(
-        `Embedder initialized for instance ${this.instanceId}: ${typeof this
-          .embedder}`
-      );
-      if (typeof this.embedder !== "function") {
-        logger.error(
-          `Embedder is not a function for instance ${this.instanceId}`,
-          this.embedder
-        );
-        throw new Error(
-          "Failed to initialize embedder: Not a callable function"
-        );
-      }
-
       this.db = await lancedb.connect(config.lanceDbPath);
 
-      const tableExists = await this.db
-        .tableNames()
-        .then((names: string[]) => names.includes("documents"));
-      if (tableExists) {
-        logger.info(
-          `Table "documents" already exists, opening it for instance ${this.instanceId}`
-        );
-        this.table = await this.db.openTable("documents");
-
-        // Remove the temp record if it exists
-        try {
-          // Check if there are any records first (optional)
-          const allRecords = await this.table?.countRows();
-          logger.info(`Table has ${allRecords} total records`);
-
-          // Delete temp records directly
-          await this.table?.delete("id = 'temp'");
-          logger.info("Removed any existing temp records from table");
-        } catch (error) {
-          logger.warn(`Could not remove temp record: ${error}`);
-        }
-      } else {
-        logger.info(
-          `Creating new "documents" table for instance ${this.instanceId}`
-        );
-        // Create table with temp record
-        this.table = await this.db.createTable("documents", [
-          {
-            id: "temp",
-            vector: new Array(384).fill(0),
-            content: "",
-            source: "",
-            chunkIndex: 0,
-          },
-        ]);
-
-        // Immediately remove the temp record after table creation
-        logger.info("Removing temp record after table creation");
-        await this.table?.delete("id = 'temp'");
+      // Drop existing table to ensure fresh state
+      const tableNames = await this.db.tableNames();
+      if (tableNames.includes("documents")) {
+        logger.info("Dropping existing documents table");
+        await this.db.dropTable("documents");
       }
+
+      // Create new table
+      this.table = await this.db.createTable("documents", [
+        {
+          id: "temp",
+          vector: new Array(384).fill(0),
+          content: "",
+          source: "",
+          chunkIndex: 0,
+        },
+      ]);
+      await this.table?.delete("id = 'temp'");
     } catch (error) {
-      logger.error(
-        `Failed to initialize embedding service for instance ${this.instanceId}: ${error}`
-      );
+      logger.error(`Failed to initialize embedding service: ${error}`);
       throw error;
     }
   };
 
-  createEmbeddings = async (
-    chunks: DocumentChunk[]
-  ): Promise<DocumentChunk[]> => {
+  async createEmbeddings(chunks: DocumentChunk[]): Promise<DocumentChunk[]> {
     const embeddedChunks: DocumentChunk[] = [];
 
     if (!this.embedder) {
-      logger.error(
-        `Embedder not initialized in createEmbeddings for instance ${this.instanceId}`
-      );
+      logger.error(`Embedder not initialized for instance ${this.instanceId}`);
       throw new Error("Embedder not initialized");
     }
 
@@ -128,15 +83,16 @@ export class EmbeddingService {
           continue;
         }
 
-        const embeddedChunk = {
-          ...chunk,
-          vector,
-        };
+        const embeddedChunk = { ...chunk, vector };
         embeddedChunks.push(embeddedChunk);
 
-        const existingArray = await this.table?.vectorSearch(vector).toArray();
+        // Check for existing chunk by ID
+        const existing = await this.table
+          ?.query()
+          .where(`id = '${chunk.id}'`)
+          .toArray();
 
-        if (existingArray?.length === 0) {
+        if (!existing || existing.length === 0) {
           await this.table?.add([
             {
               id: chunk.id,
@@ -164,11 +120,13 @@ export class EmbeddingService {
     }
 
     return embeddedChunks;
-  };
+  }
 
-  search = async (query: string, k: number = 3): Promise<DocumentChunk[]> => {
+  search = async (query: string, k: number = 10): Promise<DocumentChunk[]> => {
     try {
-      const queryEmbedding = await this.embedder(query, {
+      const cleanedQuery = query.replace(/\n+/g, " ").trim();
+      logger.info(`Searching for query: "${query}"`);
+      const queryEmbedding = await this.embedder(cleanedQuery, {
         pooling: "mean",
         normalize: true,
       });
@@ -178,27 +136,113 @@ export class EmbeddingService {
         .limit(k)
         .toArray();
 
-      logger.info(`Raw search results: ${JSON.stringify(resultsArray)}`);
-
       logger.info(
-        `Search results type for instance ${
-          this.instanceId
-        }: ${typeof resultsArray}, isArray: ${Array.isArray(resultsArray)}`
+        `Raw search results: ${JSON.stringify(
+          resultsArray?.map((el) => el?.content)
+        )}`
       );
-      if (resultsArray && typeof resultsArray === "object") {
-        logger.info(`Search results keys: ${Object.keys(resultsArray)}`);
-      }
+      logger.info(`Found ${resultsArray?.length || 0} raw search results`);
 
       if (!Array.isArray(resultsArray)) {
         logger.error(
           `Results is not an array for instance ${this.instanceId}`,
           resultsArray
         );
-        throw new Error("Search results is not an array");
+        return [];
       }
 
-      logger.info(`Found ${resultsArray.length} search results`);
-      return resultsArray.map((result: any) => ({
+      // Filter out empty or irrelevant results
+      const queryWords = cleanedQuery.toLowerCase().split(/\s+/);
+      const validResults = resultsArray.filter((result) =>
+        queryWords.some((word) => result.content.toLowerCase().includes(word))
+      );
+
+      logger.info(
+        `Found ${validResults.length} valid search results after filtering`
+      );
+
+      // Apply relevance scoring
+      const scoredResults = validResults.map((result: any) => {
+        const content = result.content.toLowerCase();
+        const queryLower = query.toLowerCase();
+
+        // Calculate relevance score based on exact matches
+        let relevanceScore = 0;
+
+        // Extract artist name from query
+        const artistMatch = query.match(/(?:artist:|by|about)\s*([^,\n]+)/i);
+        if (artistMatch) {
+          const artistName = artistMatch[1].trim().toLowerCase();
+          if (content.includes(`artist: ${artistName}`)) {
+            relevanceScore += 10; // High score for exact artist match
+          } else if (content.includes(artistName)) {
+            relevanceScore += 5; // Medium score for partial match
+          }
+        }
+
+        // Check for other query terms
+        const queryWords = queryLower
+          .split(/\s+/)
+          .filter((word) => word.length > 3);
+        queryWords.forEach((word) => {
+          if (content.includes(word)) {
+            relevanceScore += 1;
+          }
+        });
+
+        return {
+          ...result,
+          relevanceScore,
+          distance: result._distance || 0,
+        };
+      });
+
+      // Sort by relevance score first, then by distance
+      scoredResults.sort((a, b) => {
+        if (a.relevanceScore !== b.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore; // Higher relevance first
+        }
+        return a.distance - b.distance; // Lower distance (more similar) first
+      });
+
+      // Deduplicate results by source
+      const seenSources = new Set<string>();
+      const uniqueResults = scoredResults.filter((result) => {
+        if (seenSources.has(result.source)) {
+          logger.info(`Skipping duplicate source: ${result.source}`);
+          return false;
+        }
+        seenSources.add(result.source);
+        return true;
+      });
+
+      logger.info(
+        `After deduplication: ${uniqueResults.length} unique sources from ${scoredResults.length} total results`
+      );
+
+      // Take top k results
+      const topResults = uniqueResults.slice(0, k);
+
+      logger.info(
+        `Top results after scoring: ${JSON.stringify(
+          topResults.map((r) => ({
+            artist: r.content.match(/artist:\s*([^\n]+)/)?.[1],
+            relevanceScore: r.relevanceScore,
+            distance: r.distance,
+          }))
+        )}`
+      );
+
+      console.log(
+        "Search results:",
+        topResults.map((r) => ({
+          id: r.id,
+          content: r.content.slice(0, 100),
+          distance: r.distance,
+        }))
+      );
+
+      return topResults.map((result: any) => ({
         id: result.id,
         content: result.content,
         vector: result.vector,
@@ -209,8 +253,19 @@ export class EmbeddingService {
       }));
     } catch (error) {
       logger.error(`Search error for instance ${this.instanceId}: ${error}`);
-      throw error;
+      return [];
     }
+  };
+
+  private createPrompt = (
+    question: string,
+    contexts: DocumentChunk[]
+  ): string => {
+    const contextText = contexts.map((ctx) => ctx.content).join("\n\n");
+    return `Use this information to answer the question. Provide only factual information, do not ask follow-up questions.
+Question: ${question}
+Context: ${contextText}
+Answer:`;
   };
 
   cleanup = async () => {
